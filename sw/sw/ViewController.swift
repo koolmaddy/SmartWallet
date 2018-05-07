@@ -14,11 +14,14 @@ class ViewController: UIViewController {
     @IBOutlet weak var ccCitiBestBuy: UIImageView!
     @IBOutlet weak var ccBoACashRewards: UIImageView!
     @IBOutlet weak var ccBarclaycardApple: UIImageView!
+    @IBOutlet weak var payTouch: UIImageView!
+    @IBOutlet weak var prefCBLabel: UILabel!
+    @IBOutlet weak var otherCBLabel: UILabel!
     
     var ccList = [UIImageView]()
     var ccYPositions: [CGFloat] = [643.0, 619.0, 596.0, 571.0]
     
-    let todoEndpoint : String = "http://localhost:8080/MockService_war_exploded/helloworld"
+    let todoEndpoint : String = "http://17.236.36.56:8080/MockService_war_exploded/getCBInfo?storeName=AppleStore"
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -30,13 +33,27 @@ class ViewController: UIViewController {
         // reset the CC positions in the GUI
         reset()
         
-        highlightCard(cardID:3, message:"Test")
-        
-        getCashBackInfo()
+        //highlightCard(cardID:3, message:"Test")
     }
     
     func initCC() {
+        // init cc array
         ccList = [ccChaseFreedom, ccCitiBestBuy, ccBoACashRewards,ccBarclaycardApple]
+        
+        // call Wallet service to get cashbackinfo
+        getCashBackInfo(){
+            (result: [[String: Any]]) in
+            //print(result)
+            
+            // Attach to main thread for GUI changes
+            DispatchQueue.main.async {
+                let cashbackText = result[0]["value"] as? NSNumber
+                let pointsText = result[1]["value"] as? NSNumber
+                
+                // highlight selected card in GUI
+                self.highlightCard(cardID:(result[0]["walletCardId"] as! Int), message:"\(cashbackText ?? 0)", altMessage:"\(pointsText ?? 0)")
+            }
+        }
     }
     
     func reset() {
@@ -63,69 +80,65 @@ class ViewController: UIViewController {
         }
     }
     
-    func highlightCard(cardID: Int, message: String) {
+    func highlightCard(cardID: Int, message: String, altMessage: String) {
         UIView.animate(withDuration: 1.2, animations: {
             self.ccList[cardID].frame = CGRect(x: 22 , y:32, width: 330, height : 207)
         }) { (finished) in
-            // TODO
+            self.payTouch.isHidden = false
+            
+            self.prefCBLabel.text = "You'll earn: " + message + "% cashback"
+            self.prefCBLabel.isHidden = false
+            
+            self.otherCBLabel.text = "(" + altMessage + "x points available)"
+            self.otherCBLabel.isHidden = false
         }
         
+        // Order remaining CCs
         sortRemainingCards(excludedCardID: cardID)
     }
     
-    func getCashBackInfo(){
-    
+    func getCashBackInfo(completion: @escaping (_ result:[[String:Any]]) -> Void){
+        var cashbackInfo: [[String: Any]] = []
+        
+        // create wallet service URL
         guard let url = URL(string: todoEndpoint) else {
             print("Invalid URL Format")
             return
         }
         
-        let urlRequest = URLRequest(url: url)
-        let session = URLSession.shared
-        
-        let task = session.dataTask(with: urlRequest) { (data, response, error) in
-            // check for any errors
-            guard error == nil else {
-                print("error calling GET on cashback service")
-                print(error!)
-                return
-            }
-            // make sure we got data
-            guard let responseData = data else {
-                print("Error: did not receive data")
-                return
-            }
-            // parse the result as JSON, since that's what the API provides
+        // make call to wallet service
+        URLSession.shared.dataTask(with:url, completionHandler: {(data, response, error) in
+            guard let data = data, error == nil else { return }
             do {
-                guard let todo = try JSONSerialization.jsonObject(with: responseData, options: [])
-                    as? [String: Any] else {
-                        print("error trying to convert data to JSON")
-                        return
-                }
-                // now we have the todo
-                print (todo)
+                let json = try JSONSerialization.jsonObject(with: data, options: .allowFragments) as! [String:Any]
+                cashbackInfo = json["cashbackInfo"] as? [[String: Any]] ?? []
+                completion(cashbackInfo)
                 
-                guard let todoTitle = todo["walletCardId"] as? String else {
-                    print("Could not get todo title from JSON")
-                    return
-                }
-                print("The title is: " + todoTitle)
-                /*var dictonary:NSDictionary?
-
-                dictonary =  try JSONSerialization.jsonObject(with: responseData, options: []) as? [String:AnyObject] as! NSDictionary
+                //print(cashbackInfo)
+            
+                //self.highlightCard(cardID:(cashbackInfo[0]["walletCardId"] as! Int), message:"test")
                 
-                if let myDictionary = dictonary
-                {
-                    print(" test: \(myDictionary["walletCardId"]!)")
-                }*/
-               
-            } catch  {
-                print("error trying to convert data to JSON")
-                return
+                //print((cashbackInfo[0]["walletCardId"] as! Int))
+                
+                //let cashbackText = cashbackInfo[0]["value"] as? NSNumber
+                //print("Test: " + "\(cashbackText ?? 0)")
+                //self.prefCBLabel.text = "Test: " + "\(cashbackText ?? 0)"
+                
+                // print preferred credit card
+                
+                
+                // loop through available credit cards
+                //for currCard in cashbackInfo {
+                    //print(currCard["value"])
+                    //print(currCard["walletCardId"])
+                    
+                    
+                //}
+                
+            } catch let error as NSError {
+                print(error)
             }
-        }
-        task.resume()
-        
+        }).resume()
     }
 
 }
